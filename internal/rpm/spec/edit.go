@@ -671,7 +671,7 @@ func (s *Spec) AddPatchEntry(packageName, filename string) error {
 		return fmt.Errorf("failed to scan for existing patch tags:\n%w", err)
 	}
 
-	return s.AddTag(packageName, fmt.Sprintf("Patch%d", highest+1), filename)
+	return s.insertTagAfterFamily(packageName, fmt.Sprintf("Patch%d", highest+1), filename, false)
 }
 
 // RemovePatchEntry removes all references to patches matching the given pattern from the spec.
