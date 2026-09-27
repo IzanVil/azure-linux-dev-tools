@@ -271,6 +271,10 @@ func isConditionalBranchDirective(rawLine string) bool {
 func (s *Spec) InsertTag(packageName string, tag string, value string) error {
 	slog.Debug("Inserting tag to spec", "package", packageName, "tag", tag, "value", value)
 
+	return s.insertTagAfterFamily(packageName, tag, value, true)
+}
+
+func (s *Spec) insertTagAfterFamily(packageName, tag, value string, fallbackToAnyTag bool) error {
 	family := tagFamily(tag)
 	newLine := fmt.Sprintf("%s: %s", tag, value)
 
@@ -286,7 +290,7 @@ func (s *Spec) InsertTag(packageName string, tag string, value string) error {
 
 	// Determine insertion point: prefer same-family, then any tag, then fall back to AddTag.
 	insertAfterLine := result.lastFamilyTagLineNum
-	if insertAfterLine < 0 {
+	if insertAfterLine < 0 && fallbackToAnyTag {
 		insertAfterLine = result.lastAnyTagLineNum
 	}
 
