@@ -53,6 +53,9 @@ type containerTestParams struct {
 
 	// Extra mounts to add to the container.
 	ExtraMounts []containertest.ContainerMount
+
+	// Dockerfile selects an alternate scenario container definition.
+	Dockerfile string
 }
 
 // NewScenarioTest creates a new test with the specified arguments. It will default to invoking the azldev
@@ -230,6 +233,13 @@ func (cParams *containerTestParams) WithNetwork() *containerTestParams {
 	return cParams
 }
 
+// WithDockerfile selects a Dockerfile from the scenario Docker build context.
+func (cParams *containerTestParams) WithDockerfile(dockerfile string) *containerTestParams {
+	cParams.Dockerfile = dockerfile
+
+	return cParams
+}
+
 // Run runs the test as configured.
 func (params *localTestParams) Run(t *testing.T) (results testhelpers.TestResults, err error) {
 	t.Helper()
@@ -322,6 +332,10 @@ func (cParams *containerTestParams) Run(t *testing.T) (results testhelpers.TestR
 
 	if len(cParams.ExtraMounts) > 0 {
 		collateral = collateral.WithExtraMounts(cParams.ExtraMounts)
+	}
+
+	if cParams.Dockerfile != "" {
+		collateral = collateral.WithDockerfile(cParams.Dockerfile)
 	}
 
 	var cmd []string
