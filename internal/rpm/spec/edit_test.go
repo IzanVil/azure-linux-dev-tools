@@ -1401,20 +1401,27 @@ Test
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			specFile, err := spec.OpenSpec(strings.NewReader(test.input))
-			require.NoError(t, err)
+	editors := map[string][]spec.OpenOption{
+		"legacy":     nil,
+		"structural": {spec.WithEditor(spec.EditorStructural)},
+	}
 
-			require.NoError(t, specFile.AddPatchEntry("", "new.patch"))
+	for editorName, editorOptions := range editors {
+		for _, test := range tests {
+			t.Run(editorName+"/"+test.name, func(t *testing.T) {
+				specFile, err := spec.OpenSpec(strings.NewReader(test.input), editorOptions...)
+				require.NoError(t, err)
 
-			actualOutput := new(bytes.Buffer)
+				require.NoError(t, specFile.AddPatchEntry("", "new.patch"))
 
-			err = specFile.Serialize(actualOutput)
-			require.NoError(t, err)
+				actualOutput := new(bytes.Buffer)
 
-			assert.Equal(t, test.expectedOutput, actualOutput.String())
-		})
+				err = specFile.Serialize(actualOutput)
+				require.NoError(t, err)
+
+				assert.Equal(t, test.expectedOutput, actualOutput.String())
+			})
+		}
 	}
 }
 
