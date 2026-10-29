@@ -9,11 +9,10 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 
 	"github.com/microsoft/azure-linux-dev-tools/internal/app/azldev"
-	"github.com/microsoft/azure-linux-dev-tools/internal/projectconfig"
+	"github.com/microsoft/azure-linux-dev-tools/internal/app/azldev/core/imagebuilder"
 	"github.com/microsoft/azure-linux-dev-tools/internal/utils/cloudinit"
 	"github.com/microsoft/azure-linux-dev-tools/internal/utils/fileutils"
 	"github.com/microsoft/azure-linux-dev-tools/internal/utils/iso"
@@ -123,7 +122,7 @@ type ImageBootOptions struct {
 	// an empty disk is created if no image is specified).
 	ImageName string      // Positional arg: look up image in project config to find its path.
 	ImagePath string      // --image-path: explicit path to a disk image (overrides lookup).
-	Format    ImageFormat // --format: explicit format hint for image-name lookup.
+	Format    ImageFormat // --format: disk format override or format hint for image-name lookup.
 
 	// --iso: bootable ISO (e.g., livecd, installer, rescue media). Attached as a
 	// bootable CD-ROM alongside the disk. Optional; independent of cloud-init.
@@ -272,9 +271,6 @@ func addBootFlags(cmd *cobra.Command, options *ImageBootOptions) {
 		func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return qemu.SupportedArchitectures(), cobra.ShellCompDirectiveNoFileComp
 		})
-
-	// '--format' only affects image-name lookup; it conflicts with an explicit path.
-	cmd.MarkFlagsMutuallyExclusive("image-path", "format")
 }
 
 // bootFlagsExplicit tracks which flags were explicitly set on the command line
@@ -444,16 +440,20 @@ func warnRWDisk(options *ImageBootOptions, needEmptyDisk bool) {
 // '--image-path' overrides the file location.
 func resolveDiskSource(env *azldev.Env, options *ImageBootOptions) (imagePath, imageFormat string, err error) {
 	if options.ImageName != "" {
-		if _, err := ResolveImageByName(env, options.ImageName); err != nil {
+		if _, err := imagebuilder.ResolveImageByName(env, options.ImageName); err != nil {
+			//nolint:wrapcheck // Preserve the existing command-facing error unchanged.
 			return "", "", err
 		}
 	}
 
 	switch {
 	case options.ImagePath != "":
-		imageFormat, err = InferImageFormat(options.ImagePath)
-		if err != nil {
-			return "", "", err
+		imageFormat = string(options.Format)
+		if imageFormat == "" {
+			imageFormat, err = InferImageFormat(options.ImagePath)
+			if err != nil {
+				return "", "", err
+			}
 		}
 
 		// InferImageFormat recognizes all known image formats (including non-bootable
@@ -612,8 +612,9 @@ func findImageArtifact(
 	env *azldev.Env, imageName, format string, searchFormats []string,
 ) (imagePath, imageFormat string, err error) {
 	// First validate the image exists in project configuration.
-	_, err = ResolveImageByName(env, imageName)
+	_, err = imagebuilder.ResolveImageByName(env, imageName)
 	if err != nil {
+		//nolint:wrapcheck // Preserve the existing command-facing error unchanged.
 		return "", "", err
 	}
 
@@ -734,41 +735,6 @@ func listImageArtifacts(env *azldev.Env, dir string) ([]string, error) {
 	}
 
 	return artifacts, nil
-}
-
-// ResolveImageByName is like resolveImage but includes a list of available
-// images in the error message when the image is not found.
-func ResolveImageByName(env *azldev.Env, imageName string) (*projectconfig.ImageConfig, error) {
-	cfg := env.Config()
-	if cfg == nil {
-		return nil, errors.New("no project configuration loaded")
-	}
-
-	var err error
-
-	// If an image name was provided and exists in the configuration, then return the config.
-	if imageName != "" {
-		if imageConfig, ok := cfg.Images[imageName]; ok {
-			return &imageConfig, nil
-		}
-
-		err = fmt.Errorf("image %#q not found in project configuration", imageName)
-	} else {
-		err = errors.New("image name is required")
-	}
-
-	// Something went wrong; list available images so we can offer options in the error message.
-	availableImages := lo.Keys(cfg.Images)
-	sort.Strings(availableImages)
-
-	if len(availableImages) == 0 {
-		return nil, fmt.Errorf("%w; no images defined in project configuration", err)
-	}
-
-	return nil, fmt.Errorf(
-		"%w; available images: %s",
-		err, strings.Join(availableImages, ", "),
-	)
 }
 
 func checkBootPrerequisites(env *azldev.Env, arch string, needQEMUImg, needXorriso bool) error {
